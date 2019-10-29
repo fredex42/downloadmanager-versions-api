@@ -5,6 +5,7 @@ receive-version: main.go
 
 deployable: main.go
 	GOOS=linux GOARCH=amd64 go build
+	chmod a+x receive-version
 	zip ../deployables/receive-version.zip receive-version
 	rm -f receive-version
 

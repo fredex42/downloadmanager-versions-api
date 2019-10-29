@@ -19,6 +19,7 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 
 	var releaseEvent common.NewReleaseEvent
 
+	log.Printf("Got request body '%s'", request.Body)
 	unmarshalErr := json.Unmarshal([]byte(request.Body), &releaseEvent)
 	if unmarshalErr != nil {
 		log.Printf("Could not unmarshal request body: %s\n", unmarshalErr)

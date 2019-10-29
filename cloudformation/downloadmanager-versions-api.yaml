@@ -1,0 +1,296 @@
+Parameters:
+  DeployablesBucket:
+    Type: String
+    Description: S3 bucket that the deployable artifacts for lambda functions live in
+  App:
+    Type: String
+    Description: Application name
+  Stack:
+    Type: String
+    Description: Stack name
+  Stage:
+    Type: String
+    Description: Deployment stage
+    AllowedValues:
+      - CODE
+      - PROD
+Resources:
+  IAMLambdaServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaServiceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: ''
+          Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+      Policies:
+      - PolicyName: LambdaServiceRolePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action:
+            - s3:Get*
+            - s3:List*
+            Resource: "*"
+            Effect: Allow
+  IAMAPIServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaAPIServiceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: ''
+          Effect: Allow
+          Principal:
+            Service: apigateway.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+      Policies:
+      - PolicyName: API_Service_Role_Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action: lambda:InvokeFunction
+            Resource: !GetAtt APIFunction.Arn
+            Effect: Allow
+          - Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:PutItem
+            Effect: Allow
+            Resource: !GetAtt DataTable.Arn
+  DataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: productName
+          AttributeType: S
+        - AttributeName: buildId
+          AttributeType: N
+      KeySchema:
+        - AttributeName: productName
+          KeyType: HASH
+        - AttributeName: buildId
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: App
+          Value: !Ref App
+        - Key: Stack
+          Value: !Ref Stack
+        - Key: Stage
+          Value: !Ref Stage
+  APIFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Stack}-ReceiveVersion-${Stage}
+      Description: Function to receive notification of a new software version
+      Code:
+        S3Bucket: !Ref DeployablesBucket
+        S3Key: !Sub "${App}/${Stack}/${Stage}/receive-version.zip"
+      Handler: receive-version
+      Runtime: go1.x
+      MemorySize: 128
+      Environment:
+        Variables:
+          DYNAMO_TABLE_NAME: !Ref DataTable
+      Role:
+        Fn::GetAtt:
+        - IAMLambdaServiceRole
+        - Arn
+      Timeout: 60
+  RestAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: API to process new version and get version requests
+      Name: Versions API
+      EndpointConfiguration:
+        Types:
+        - REGIONAL
+      Body:
+        swagger: '2.0'
+        info:
+          description: API to process new version and get version requests
+          version: 1.0.0
+          title: Versions API
+        schemes:
+        - https
+        paths:
+          "/": {}
+          "/newversion":
+            post:
+              produces:
+              - application/json
+              - application/customer-error
+              - application/api_not_found
+              - application/no_record
+              - application/api_error
+              responses:
+                '200':
+                  description: 200 response
+                  schema:
+                    "$ref": "#/definitions/Empty"
+                '201':
+                  description: 201 response
+                '204':
+                  description: 204 response
+                '230':
+                  description: 230 response
+                '231':
+                  description: 231 response
+                '232':
+                  description: 232 response
+                '233':
+                  description: 233 response
+              security:
+              - sigv4: []
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: '200'
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${APIFunction}/invocations"
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                contentHandling: CONVERT_TO_TEXT
+                credentials:
+                  Fn::GetAtt:
+                  - IAMAPIServiceRole
+                  - Arn
+                type: aws_proxy
+        securityDefinitions:
+          sigv4:
+            type: apiKey
+            name: Authorization
+            in: header
+            x-amazon-apigateway-authtype: awsSigv4
+        definitions:
+          Empty:
+            type: object
+            title: Empty Schema
+  RestAPICaller:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: test_api_caller
+  RestAPICallerManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DependsOn:
+    - RestAPI
+    - APIFunction
+    - RestAPICaller
+    Properties:
+      Description: Get_Car API Caller
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: RestAPICaller001
+          Effect: Allow
+          Action: execute-api:Invoke
+          Resource:
+            Fn::Join:
+            - ''
+            - - 'arn:aws:execute-api:'
+              - Ref: AWS::Region
+              - ":"
+              - Ref: AWS::AccountId
+              - ":"
+              - Ref: RestAPI
+              - "/*/POST/*"
+        - Sid: RestAPICaller002
+          Effect: Allow
+          Action: lambda:InvokeFunction
+          Resource:
+            Fn::Join:
+            - ''
+            - - 'arn:aws:lambda:'
+              - Ref: AWS::Region
+              - ":"
+              - Ref: AWS::AccountId
+              - ":function:"
+              - Ref: APIFunction
+      Users:
+      - test_api_caller
+      ManagedPolicyName: API_Caller_Policy
+  LambdaPermissions:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+    - APIFunction
+    Properties:
+      Action: lambda:Invoke
+      FunctionName:
+        Ref: APIFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:/*/POST/newversion"
+  APIFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: APIFunction
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${APIFunction}"
+  ApiGatewayCloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - apigateway.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: API_GW_Logs_Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:DescribeLogGroups
+            - logs:DescribeLogStreams
+            - logs:PutLogEvents
+            - logs:GetLogEvents
+            - logs:FilterLogEvents
+            Resource: "*"
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn:
+        Fn::GetAtt:
+        - ApiGatewayCloudWatchLogsRole
+        - Arn
+  RestAPIStage:
+    Type: AWS::ApiGateway::Stage
+    DependsOn:
+    - ApiGatewayAccount
+    Properties:
+      DeploymentId:
+        Ref: RestAPIDeployment
+      MethodSettings:
+      - DataTraceEnabled: true
+        HttpMethod: "*"
+        LoggingLevel: INFO
+        ResourcePath: "/*"
+      RestApiId:
+        Ref: RestAPI
+      StageName: dev
+  RestAPIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+    - RestAPI
+    Properties:
+      RestApiId:
+        Ref: RestAPI
+      StageName: !Ref Stage
+
