@@ -292,5 +292,5 @@ Resources:
     Properties:
       RestApiId:
         Ref: RestAPI
-      StageName: !Ref Stage
+      StageName: dummy
 

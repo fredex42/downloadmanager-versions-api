@@ -28,7 +28,7 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 
 	putErr := releaseEvent.LogRelease(tableName)
 	if putErr != nil {
-		return events.APIGatewayProxyResponse{Body: putErr.Error(), StatusCode: 500}, errors.New("Not yet implemented")
+		return events.APIGatewayProxyResponse{Body: putErr.Error(), StatusCode: 500}, errors.New("Could not write record to Dynamo: " + putErr.Error())
 	} else {
 		return events.APIGatewayProxyResponse{StatusCode: 201}, nil
 	}
