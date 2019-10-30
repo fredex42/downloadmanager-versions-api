@@ -28,6 +28,13 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 		return events.APIGatewayProxyResponse{StatusCode: 400}, unmarshalErr
 	}
 
+	validationErr := releaseEvent.Validate()
+	if validationErr != nil {
+		log.Printf("Incoming JSON was not valid: %s\n", validationErr)
+		return events.APIGatewayProxyResponse{StatusCode: 400, Body: validationErr.Error()}, nil
+	}
+
+	//set up an AWS session to communicate with Dynamo
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
