@@ -156,8 +156,7 @@ Resources:
                   description: Provided data wasn't understood
                 '500':
                   description: Something broke server-side
-              security:
-                - apikeyheader: []
+              security: []
               x-amazon-apigateway-integration:
                 responses:
                   default:
@@ -177,12 +176,8 @@ Resources:
               - application/no_record
               - application/api_error
               responses:
-                '200':
-                  description: 200 response
-                  schema:
-                    "$ref": "#/definitions/Empty"
                 '201':
-                  description: 201 response
+                  description: Record was created
                 '400':
                   description: Provided data wasn't understood
                 '500':
