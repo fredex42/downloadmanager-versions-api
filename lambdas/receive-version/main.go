@@ -6,6 +6,8 @@ import (
 	"errors"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/fredex42/downloadmanager-versions-api/lambdas/common"
 	"log"
 	"os"
@@ -23,12 +25,18 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 	unmarshalErr := json.Unmarshal([]byte(request.Body), &releaseEvent)
 	if unmarshalErr != nil {
 		log.Printf("Could not unmarshal request body: %s\n", unmarshalErr)
-		return events.APIGatewayProxyResponse{StatusCode: 400}, errors.New("Could not unmarshal request body")
+		return events.APIGatewayProxyResponse{StatusCode: 400}, unmarshalErr
 	}
 
-	putErr := releaseEvent.LogRelease(tableName)
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+
+	client := dynamodb.New(sess)
+
+	putErr := releaseEvent.LogRelease(client, tableName)
 	if putErr != nil {
-		return events.APIGatewayProxyResponse{Body: putErr.Error(), StatusCode: 500}, errors.New("Could not write record to Dynamo: " + putErr.Error())
+		return events.APIGatewayProxyResponse{Body: "Could not communicate with database", StatusCode: 500}, errors.New("Could not write record to Dynamo: " + putErr.Error())
 	} else {
 		return events.APIGatewayProxyResponse{StatusCode: 201}, nil
 	}
