@@ -30,3 +30,9 @@ func (e *NewReleaseEvent) Validate() error {
 	}
 	return nil
 }
+
+type SearchRequest struct {
+	Branch           string `json:"branch"`
+	ProductName      string `json:"productName"`
+	AlwaysShowMaster bool   `json:"alwaysShowMaster"`
+}

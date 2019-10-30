@@ -5,3 +5,5 @@ require (
 	github.com/aws/aws-sdk-go v1.25.21
 	github.com/davecgh/go-spew v1.1.0
 )
+
+go 1.13
