@@ -61,15 +61,10 @@ Resources:
           Version: '2012-10-17'
           Statement:
           - Action: lambda:InvokeFunction
-            Resource: !GetAtt APIFunction.Arn
+            Resource:
+            - !GetAtt APIFunction.Arn
+            - !GetAtt LookupAPIFunction.Arn
             Effect: Allow
-#          - Action:
-#              - dynamodb:GetItem
-#              - dynamodb:Query
-#              - dynamodb:Scan
-#              - dynamodb:PutItem
-#            Effect: Allow
-#            Resource: !GetAtt DataTable.Arn
   DataTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -112,6 +107,25 @@ Resources:
         - IAMLambdaServiceRole
         - Arn
       Timeout: 60
+  LookupAPIFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${Stack}-LookupVersion-${Stage}
+      Description: Function to look for existing software versions
+      Code:
+        S3Bucket: !Ref DeployablesBucket
+        S3Key: !Sub "${App}/${Stack}/${Stage}/lookup-version.zip"
+      Handler: lookup-version
+      Runtime: go1.x
+      MemorySize: 128
+      Environment:
+        Variables:
+          DYNAMO_TABLE_NAME: !Ref DataTable
+      Role:
+        Fn::GetAtt:
+          - IAMLambdaServiceRole
+          - Arn
+      Timeout: 60
   RestAPI:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -130,6 +144,30 @@ Resources:
         - https
         paths:
           "/": {}
+          "/lookup":
+            get:
+              produces:
+                - application/json
+                - text/plain
+              responses:
+                '200':
+                  description: Returned data as a JSON array
+                '400':
+                  description: Provided data wasn't understood
+                '500':
+                  description: Something broke server-side
+              security:
+                - apikeyheader: []
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: '200'
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LookupAPIFunction}/invocations"
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                contentHandling: CONVERT_TO_TEXT
+                credentials: !GetAtt IAMAPIServiceRole.Arn
+                type: aws_proxy
           "/newversion":
             post:
               produces:
@@ -145,16 +183,10 @@ Resources:
                     "$ref": "#/definitions/Empty"
                 '201':
                   description: 201 response
-                '204':
-                  description: 204 response
-                '230':
-                  description: 230 response
-                '231':
-                  description: 231 response
-                '232':
-                  description: 232 response
-                '233':
-                  description: 233 response
+                '400':
+                  description: Provided data wasn't understood
+                '500':
+                  description: Something broke server-side
               security:
               - apikeyheader: []
               x-amazon-apigateway-integration:
@@ -165,10 +197,7 @@ Resources:
                 passthroughBehavior: when_no_match
                 httpMethod: POST
                 contentHandling: CONVERT_TO_TEXT
-                credentials:
-                  Fn::GetAtt:
-                  - IAMAPIServiceRole
-                  - Arn
+                credentials: !GetAtt IAMAPIServiceRole.Arn
                 type: aws_proxy
         securityDefinitions:
           apikeyheader:
@@ -179,33 +208,7 @@ Resources:
           Empty:
             type: object
             title: Empty Schema
-#  RestAPICaller:
-#    Type: AWS::IAM::User
-#    Properties:
-#      UserName: test_api_caller
-#  RestAPICallerManagedPolicy:
-#    Type: AWS::IAM::ManagedPolicy
-#    DependsOn:
-#    - RestAPI
-#    - APIFunction
-#    - RestAPICaller
-#    Properties:
-#      Description: Get_Car API Caller
-#      PolicyDocument:
-#        Version: '2012-10-17'
-#        Statement:
-#        - Sid: RestAPICaller001
-#          Effect: Allow
-#          Action: execute-api:Invoke
-#          Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestAPI}/*/POST/*"
-#        - Sid: RestAPICaller002
-#          Effect: Allow
-#          Action: lambda:InvokeFunction
-#          Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${APIFunction}"
-#      Users:
-#      - test_api_caller
-#      ManagedPolicyName: API_Caller_Policy
-  LambdaPermissions:
+  UpdateLambdaPermissions:
     Type: AWS::Lambda::Permission
     DependsOn:
     - APIFunction
@@ -215,6 +218,16 @@ Resources:
         Ref: APIFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:/*/POST/newversion"
+  LookupLambdaPermissions:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - LookupAPIFunction
+    Properties:
+      Action: lambda:Invoke
+      FunctionName:
+        Ref: APIFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:/*/GET/lookup"
   APIFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     DependsOn: APIFunction
