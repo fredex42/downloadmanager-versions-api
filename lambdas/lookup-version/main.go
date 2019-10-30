@@ -54,6 +54,10 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 		results[1] = masterRecord
 	}
 
+	if results[0] == nil {
+		return events.APIGatewayProxyResponse{Body: "Nothing found for product and branch", StatusCode: 404}, nil
+	}
+
 	output, marshalErr := json.Marshal(results)
 
 	if marshalErr != nil {

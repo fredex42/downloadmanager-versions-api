@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -50,15 +49,19 @@ returns either:
     - nil and nil if no record was found and there was not an error
 */
 func MostRecentRelease(client dynamodbiface.DynamoDBAPI, tableName string, productName string, branch string) (*NewReleaseEvent, error) {
-	query := fmt.Sprintf("productName = %s", productName)
-	filterExpr := fmt.Sprintf("branch = %s", branch)
 	scanForward := false //we want to start with the highest number
 
+	parameters := map[string]*dynamodb.AttributeValue{
+		":nameSubst":   {S: aws.String(productName)},
+		":branchSubst": {S: aws.String(branch)},
+	}
+
 	qInput := &dynamodb.QueryInput{
-		TableName:              &tableName,
-		KeyConditionExpression: &query,
-		ScanIndexForward:       &scanForward,
-		FilterExpression:       &filterExpr,
+		TableName:                 &tableName,
+		KeyConditionExpression:    aws.String("productName=:nameSubst"),
+		ExpressionAttributeValues: parameters,
+		ScanIndexForward:          &scanForward,
+		FilterExpression:          aws.String("branch=:branchSubst"),
 	}
 
 	results, scanErr := client.Query(qInput)
