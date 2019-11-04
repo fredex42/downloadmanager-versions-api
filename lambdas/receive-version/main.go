@@ -10,9 +10,24 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/fredex42/downloadmanager-versions-api/lambdas/common"
 	"log"
+	"net/http"
 	"os"
 	"time"
 )
+
+func TestUploadedContent(uploadUrl string) bool {
+	response, headErr := http.Head(uploadUrl)
+	if headErr != nil {
+		log.Printf("Could not verify uploaded URL %s: %s", uploadUrl, headErr)
+		return false
+	}
+
+	if response.StatusCode != 200 {
+		log.Printf("Could not verify uploaded URL %s - server returned %d", uploadUrl, response.StatusCode)
+		return false
+	}
+	return true
+}
 
 func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	log.Printf("Processing request with ID %s.\n", request.RequestContext.RequestID)
@@ -33,6 +48,11 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 	if validationErr != nil {
 		log.Printf("Incoming JSON was not valid: %s\n", validationErr)
 		return events.APIGatewayProxyResponse{StatusCode: 400, Body: validationErr.Error()}, nil
+	}
+
+	couldFindContent := TestUploadedContent(releaseEvent.DownloadUrl)
+	if couldFindContent == false {
+		return events.APIGatewayProxyResponse{StatusCode: 400, Body: "Could not verify provided release URL"}, nil
 	}
 
 	releaseEvent.Timestamp = time.Now().Format(time.RFC3339)
