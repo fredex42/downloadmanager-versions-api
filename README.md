@@ -89,3 +89,27 @@ into a request header called `x-api-key` and you should be able to set data
 build ID in your response.
 
 9. You can now set up your client software and build process to allow automatic updates
+
+# Updating the code
+
+A utility is provided that helps if you need to quickly update the deployed code in the lambda functions.
+
+To build the utility:
+```bash
+$ cd utils/update-lambdas
+$ go build
+$ cd ../..
+```
+
+Once built, you can update the code from a deployed stack:
+```bash
+$ cd lambdas
+$ make deployables
+$ cd ..
+$ utils/update-lambdas/update-lambdas -stackName {name-of-your-deployed-cloudformation}
+```
+
+This will upload the built ZIP files into S3 at the right path for your stack (based on stack parameters for upload
+ bucket and app/stack/stage) and automatically update the lambda functions.  The mapping from zip file name to lambda function
+ is stored statically at the top of the program.
+ 
