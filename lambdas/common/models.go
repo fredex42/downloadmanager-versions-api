@@ -11,6 +11,8 @@ type NewReleaseEvent struct {
 	Branch      string `json:"branch"`
 	DownloadUrl string `json:"downloadUrl"`
 	ProductName string `json:"productName"`
+	Timestamp   string `json:"timestamp"`
+	BuildSHA    string `json:"buildSHA"`
 }
 
 func (e *NewReleaseEvent) Validate() error {

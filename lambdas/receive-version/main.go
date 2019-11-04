@@ -11,6 +11,7 @@ import (
 	"github.com/fredex42/downloadmanager-versions-api/lambdas/common"
 	"log"
 	"os"
+	"time"
 )
 
 func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -33,6 +34,8 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 		log.Printf("Incoming JSON was not valid: %s\n", validationErr)
 		return events.APIGatewayProxyResponse{StatusCode: 400, Body: validationErr.Error()}, nil
 	}
+
+	releaseEvent.Timestamp = time.Now().Format(time.RFC3339)
 
 	//set up an AWS session to communicate with Dynamo
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
